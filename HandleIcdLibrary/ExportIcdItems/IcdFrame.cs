@@ -8,6 +8,9 @@ namespace HandleIcdLibrary
 {
     public class Icdframe
     {
+        /// <summary>
+        /// dictionary of {id - icdItem}
+        /// </summary>
         public Dictionary<int, IcdItem> _frameDict;
         public Icdframe()
         {
@@ -16,16 +19,7 @@ namespace HandleIcdLibrary
         public async Task CreateIcdFrame(string filePath, CancellationToken token)
         {
             IcdDictionaryBuilder dictionaryBuilder = new IcdDictionaryBuilder(filePath);
-            this._frameDict = await dictionaryBuilder.InsertValuesAsync(token);
-        }
-        public override string ToString()
-        {
-            StringBuilder sb = new StringBuilder();
-            foreach (var item in _frameDict.Values)
-            {
-                sb.Append(item.ToString());
-            }
-            return sb.ToString();
+            this._frameDict = await dictionaryBuilder.InsertValuesAsyncTask(token);
         }
     }
 }

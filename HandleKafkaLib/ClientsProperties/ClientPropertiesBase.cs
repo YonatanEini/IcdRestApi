@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 namespace HandleKafkaLibrary.CosumersProperties
 {
     /// <summary>
-    /// base class for client consumer properties
+    /// base class for kafka clients properties
     /// </summary>
     [JsonConverter(typeof(ClientPropertiesBase))]
     public abstract class ClientPropertiesBase
@@ -19,7 +19,7 @@ namespace HandleKafkaLibrary.CosumersProperties
         [Required(ErrorMessage = "Ip is required")]
         public string Ip { get; set; }
         [Required(ErrorMessage = "Consumer topic is required")]
-        public List<KafkaTopicsEnum> ConsumerTopic { get; set; } 
+        public IEnumerable<KafkaTopicsEnum> ConsumerTopic { get; set; } 
         protected ClientPropertiesBase()
         {
             this.Port = -1;

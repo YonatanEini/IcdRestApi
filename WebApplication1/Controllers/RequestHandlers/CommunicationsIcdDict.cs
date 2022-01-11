@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using IcdFilesRestApi;
 using IcdFilesRestApi.Controllers.RequestsHandlers;
 using Newtonsoft.Json;
+
 namespace DecodedIcd.Controllers.RequestHandlers
 {
     /// <summary>
@@ -19,7 +20,6 @@ namespace DecodedIcd.Controllers.RequestHandlers
 
         private CommuncationsIcdDict(IcdDataInitialiazer IcdFilesInitilalizer)
         {
-
             this.IcdFilesPath = IcdFilesInitilalizer.IcdFilesPath;
             this.CommunicationsIcdDict = IcdFilesInitilalizer.CommunicationIcdDict;
         }
@@ -40,5 +40,6 @@ namespace DecodedIcd.Controllers.RequestHandlers
             }
             return null;
         }
+
     }
 }

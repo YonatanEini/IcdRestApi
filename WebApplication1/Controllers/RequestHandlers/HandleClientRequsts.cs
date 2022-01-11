@@ -12,6 +12,9 @@ using WebApplication1;
 using HandleKafkaLib;
 using IcdFilesRestApi.Controllers.RequestsHandlers;
 using HandleKafkaLibrary;
+using HandleKafkaLibrary.ClientConsumers;
+using System.Net;
+using HandleKafkaLibrary.CosumersProperties;
 
 namespace DecodedIcd.Controllers.RequestHandlers
 {
@@ -35,7 +38,7 @@ namespace DecodedIcd.Controllers.RequestHandlers
             this.TokenDictionary.Add(properties.CommunicationType, source);
             this.ClientActiveRequest.Add(properties);
             KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
-            consumerManager.AddCancellationToken(properties.CommunicationType, source);
+            consumerManager.AddTopicCancellationToken(properties.CommunicationType, source);
         }
         /// <summary>
         /// writes decoded messages according to the request properties to kafka
@@ -43,26 +46,29 @@ namespace DecodedIcd.Controllers.RequestHandlers
         /// <param name="decodedMessageProps"></param>
         /// <param name="communicationsDict"></param>
         /// <param name="IcdInitilizer"></param>
-        public void ProduceDecodedMessageTask(DecodedMessagePropertiesDto decodedMessageProps, CommuncationsIcdDict communicationsDict, IcdDataInitialiazer IcdInitilizer, ProducerConfig config )
+        public async Task ProduceDecodedMessageAsync(DecodedMessagePropertiesDto decodedMessageProps, 
+            CommuncationsIcdDict communicationsDict, IcdDataInitialiazer IcdInitilizer, ProducerConfig config )
         {
             CancellationTokenSource source;
             source = new CancellationTokenSource();
             AddProducerRequst(decodedMessageProps, source);
-            Task.Run(async () =>
+            while (!source.Token.IsCancellationRequested)
             {
-                while (!source.Token.IsCancellationRequested)
-                {
-                    string topic = decodedMessageProps.CommunicationType + "-" + decodedMessageProps.DataDirection;
-                    string communicationName = communicationsDict.GetCommunicationIcdName(decodedMessageProps.CommunicationType, decodedMessageProps.DataDirection); //Get Icd File Name
-                    string finalPath = Path.Combine(communicationsDict.IcdFilesPath, communicationName + ".txt");
-                    DecodedFrameCreator rndDecoded = new DecodedFrameCreator(finalPath);
-                    DecodedFrameDto decodedFrame = await rndDecoded.CreateRandomFrameTask(config, topic, source.Token); //creates random frames
-                    KafkaProducer producer = KafkaProducer.GetInstance(config);
-                    await producer.WriteToKafkaAsync(topic, decodedFrame, source.Token); //writing data to kafka
-                    await Task.Delay(decodedMessageProps.TransmissionRate);
-                }
-                ClientActiveRequest.Remove(decodedMessageProps);
-            }, source.Token);
+                string topic = decodedMessageProps.CommunicationType + "-" + decodedMessageProps.DataDirection;
+                //search for the Icd File Name
+                string communicationName = communicationsDict.GetCommunicationIcdName(decodedMessageProps.CommunicationType,
+                    decodedMessageProps.DataDirection); 
+                string finalPath = Path.Combine(communicationsDict.IcdFilesPath, communicationName + ".txt");
+                DecodedFrameCreator rndDecoded = new DecodedFrameCreator(finalPath);
+                //creates random frames
+                DecodedFrameDto decodedFrame = await rndDecoded.CreateRandomFrameAsyncTask(source.Token); 
+                KafkaProducer producer = KafkaProducer.GetInstance(config);
+                //writing data to kafka
+                _ = Task.Factory.StartNew(() => producer.WriteToKafkaAsync(topic, decodedFrame, source.Token));  
+                //client transmission rate delay
+                await Task.Delay(decodedMessageProps.TransmissionRate);
+            }
+            ClientActiveRequest.Remove(decodedMessageProps);
         }
         public bool StopRequest(string communcationName)
         {
@@ -70,8 +76,6 @@ namespace DecodedIcd.Controllers.RequestHandlers
             {
                 this.TokenDictionary[communcationName].Cancel();
                 this.TokenDictionary.Remove(communcationName);
-                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
-                consumerManager.CancelKafkaConsumer(communcationName); //cancelling consumer on the topic
                 return true;
             }
             return false;
@@ -104,11 +108,34 @@ namespace DecodedIcd.Controllers.RequestHandlers
             string communicationName = clientProps.CommunicationType;
             if (dataDirection.Equals(EnumCommunicationType.Uplink) || dataDirection.Equals(EnumCommunicationType.Downlink))
             {
-                if (currentDataBase.CommunicationsIcdDict.ContainsKey(communicationName) && !CheckIfCommunicationActive(communicationName))
+                if (currentDataBase.CommunicationsIcdDict.ContainsKey(communicationName) && 
+                    !CheckIfCommunicationActive(communicationName))
                     return true;
                 return false;
             }
             return false;
+        }
+        public HttpStatusCode SearchClientProperties(ClientPropertiesBase properties)
+        {
+            HttpStatusCode responseStatusCode = HttpStatusCode.NotAcceptable;
+            KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
+            foreach (var topic in properties.ConsumerTopic)
+            {
+                if (consumerManager.TopicClientsDict.ContainsKey(topic))
+                {
+                    List<ClientDataReceiverBase> topicKafkaListeners = consumerManager.TopicClientsDict[topic];
+                    foreach (var client in topicKafkaListeners)
+                    {
+                        if (client.CompareProperties(properties))
+                        {
+                            consumerManager.TopicClientsDict[topic].Remove(client);
+                            responseStatusCode = HttpStatusCode.Created;
+                            break;
+                        }
+                    }
+                }
+            }
+            return responseStatusCode;
         }
     }
 }

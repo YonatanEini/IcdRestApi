@@ -21,51 +21,83 @@ namespace HandleKafkaLib
         {
             this._config = config;
         }
-        public void ConsumeFromKafkaTopicAsync(KafkaTopicsEnum topic)
+        /// <summary>
+        /// consume data from kafka by topic and sends it to the topic clients
+        /// </summary>
+        /// <param name="topic"></param>
+        public async Task ConsumeFromKafkaTopicAsync(KafkaTopicsEnum topic)
         {
             KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
-            List<ClientDataReceiverBase> consumerClients = consumerManager.TopicClientsDict[topic]; //consumer-client list
-            Task.Run(() => // consumer task
+            //consumer-client list
+            List<ClientDataReceiverBase> consumerClients = consumerManager.TopicClientsDict[topic]; 
+            List<string> topics = new List<string>()
             {
-                   List<string> topics = new List<string>()
-                   {
                         topic + "-Uplink",
                         topic + "-Downlink"
-                   };
-                using (var consumer = new ConsumerBuilder<Null, string>(_config).Build())
+            };
+            using (var consumer = new ConsumerBuilder<Null, string>(_config).Build())
+            {
+                //to listen both uplink and downlink kafka topics
+                consumer.Subscribe(topics);
+                //while there are clients on the topic
+                while (consumerClients.Count > 0) 
                 {
-                    consumer.Subscribe(topics); //to listen both uplink and downlink kafka topics
-                    while(consumerClients.Count > 0) //while there are clients on the topic
+                    try
                     {
-                        try
-                        {
-                            var data = consumer.Consume(consumerManager.TopicCancellationTokenDict[topic].Token); // read data from kafka
-                            DecodedFrameDto decodedFrame = JsonConvert.DeserializeObject<DecodedFrameDto>(data.Value);// KafkaData => DecodedFrameDto                    
-                            SendDataToClientsTask(consumerClients, decodedFrame, topic);
-                        }
-                        catch (Exception e)
-                        {
-                            Console.WriteLine($"Kafka Conusmer On Topic: {topic} is close");
-                            //await until cancellation TOKEN isn't cancelled
-                        }
+                        // read data from kafka
+                        var data = consumer.Consume(consumerManager.TopicCancellationTokenDict[topic].Token);
+                        // KafkaData => DecodedFrameDto
+                        DecodedFrameDto decodedFrame = JsonConvert.DeserializeObject<DecodedFrameDto>(data.Value);
+                        //sending decoded frame to topic clients
+                        Task sendDataTask = new Task(() => SendDataToClients(decodedFrame, topic)); 
+                        sendDataTask.Start();
+                    }
+                    catch (ConsumeException)
+                    {
+                        Console.WriteLine("Consumer Error => can't consume data!");
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Console.WriteLine("Cancellation Token Activated => consumer doesn't consume any data!");
+                        await Task.Delay(1000);
+                        //await until cancellation TOKEN isn't cancelled
+                    }
+                    catch (KeyNotFoundException)
+                    {
+                        Console.WriteLine("Token Cancelled after starting task => cancelling the task");
                     }
                 }
                 consumerManager.TopicClientsDict.Remove(topic);
                 consumerManager.TopicCancellationTokenDict.Remove(topic);
-            });
+            }
         }
-        public void SendDataToClientsTask(List<ClientDataReceiverBase> consumerClients, DecodedFrameDto decodedFrame, KafkaTopicsEnum topic)
+        /// <summary>
+        /// sends decodedFrame to the kafka topic clients
+        /// </summary>
+        /// <param name="decodedFrame"></param>
+        /// <param name="topic"></param>
+        public void SendDataToClients(DecodedFrameDto decodedFrame, KafkaTopicsEnum topic)
         {
             KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
-            List<ClientDataReceiverBase> kafkaConsumerClients = consumerManager.TopicClientsDict[topic]; //consumer-client list
-            Task.Run(() => //sending data to clients Task (could be long time)
+            //checks if topic consumer is active
+            if (consumerManager.TopicClientsDict.ContainsKey(topic) && 
+                !consumerManager.TopicCancellationTokenDict[topic].Token.IsCancellationRequested) 
             {
+                 //updated topic client list
+                List<ClientDataReceiverBase> kafkaConsumerClients = consumerManager.TopicClientsDict[topic];
                 Console.WriteLine("SENDING DATA TO CLIENTS =>");
-                Parallel.ForEach(kafkaConsumerClients, async client => //every iteration is a Task
+                Parallel.ForEach(kafkaConsumerClients, async client =>
                 {
-                    await client.ReceiveDecodedFrameAsync(decodedFrame, consumerManager.TopicCancellationTokenDict[topic].Token); //send the decodedFrame to the client
+                    //send the decodedFrame to the client {true => success, false => failed}
+                    bool taskResult = await client.ReceiveDecodedFrameAsync(decodedFrame,
+                        consumerManager.TopicCancellationTokenDict[topic].Token);
+                    if (taskResult == false && kafkaConsumerClients.Contains(client))
+                    {
+                        kafkaConsumerClients.Remove(client);
+                        consumerManager.CancelledRequestDiscriptionList.Add(client.ToString());
+                    }
                 });
-            }); //data sent to all clients
+            }
         }
     }
     

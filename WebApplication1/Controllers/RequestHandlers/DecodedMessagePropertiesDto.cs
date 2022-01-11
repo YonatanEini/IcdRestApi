@@ -27,7 +27,8 @@ namespace DecodedIcd.Controllers.RequestHandlers
         }
         public override string ToString()
         {
-            return "CommunicationType: " + this.CommunicationType + " DataDirection: " + this.DataDirection + " transmition rate: " + this.TransmissionRate;
+            return "CommunicationType: " + this.CommunicationType + " DataDirection: " + 
+                this.DataDirection + " transmition rate: " + this.TransmissionRate;
         }
     }
 }

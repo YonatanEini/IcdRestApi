@@ -10,11 +10,11 @@ using System.Text;
 namespace HandleKafkaLibrary.CosumersProperties
 {
     /// <summary>
-    /// client Udp properties
+    /// Udp client properties
     /// </summary>
-    public class UdpClientProperties:ClientPropertiesBase
+    public class SocketClientsProperties : ClientPropertiesBase
     {
-        public UdpClientProperties() : base() {;}
-        public UdpClientProperties(int port, string ip, List<KafkaTopicsEnum> topic) : base(port, ip, topic) {;}
+        public SocketClientsProperties() : base() {;}
+        public SocketClientsProperties(int port, string ip, List<KafkaTopicsEnum> topic) : base(port, ip, topic) {;}
     }
 }

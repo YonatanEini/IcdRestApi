@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations;
 namespace HandleIcdLibrary
 {
     /// <summary>
-    /// write object to kafka
+    /// object write to kafka
     /// </summary>
     public class DecodedFrameDto
     {
@@ -20,7 +20,7 @@ namespace HandleIcdLibrary
         [Required(ErrorMessage = "Icd file is required")]
         public string Icdfile { get; set; }
         [Required(ErrorMessage = "Hour is required")]
-        public string Hour { get; set; } //for powerbi
+        public string Hour { get; set; } 
         public DecodedFrameDto()
         {
             this.DecodedItems = new List<DecodedItem>();

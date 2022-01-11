@@ -1,5 +1,4 @@
-﻿using Confluent.Kafka;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -22,35 +21,38 @@ namespace HandleIcdLibrary
             _frameDecodedItems = new List<DecodedItem>();
         }
         /// <summary>
-        /// Building decodedFrame {name, random value}
+        /// creates decodedFrame {name, random value} from {id-icdItem} dictionary
         /// </summary>
-        /// <param name="config"></param>
-        /// <param name="topic"></param>
         /// <param name="token"></param>
         /// <returns></returns>
-        public async Task<DecodedFrameDto> CreateRandomFrameTask(ProducerConfig config, string topic, CancellationToken token)
+        public async Task<DecodedFrameDto> CreateRandomFrameAsyncTask(CancellationToken token)
         {
             DecodedFrameDto frame = new DecodedFrameDto();
             await Task.Run(async () =>
             {
-                Icdframe icdItems = new Icdframe();
-                await icdItems.CreateIcdFrame(_filePath, token); // creates ICD frame from icd file
-                foreach (var icdItem in icdItems._frameDict.Values)
-                {
-                    DecodedItem newDecodeItem = new DecodedItem(icdItem.Name, GetRndNumber(icdItem));
-                    _frameDecodedItems.Add(newDecodeItem);
-                }
-                DateTime decodedDate = DateTime.Now;
-                string fileName = Path.GetFileName(_filePath);
-                frame = new DecodedFrameDto(_frameDecodedItems, decodedDate, fileName);
+                 Icdframe icdItems = new Icdframe();
+                //creates ICD frame from icd file
+                 await icdItems.CreateIcdFrame(_filePath, token); 
+                 foreach (var icdItem in icdItems._frameDict.Values)
+                 {
+                     DecodedItem newDecodeItem = new DecodedItem(icdItem.Name, GetRndNumber(icdItem));
+                     _frameDecodedItems.Add(newDecodeItem);
+                 }
+                 DateTime decodedDate = DateTime.Now;
+                 string icdFileName = Path.GetFileName(_filePath);
+                 frame = new DecodedFrameDto(_frameDecodedItems, decodedDate, icdFileName);
             }, token);
-            return frame;
+            if(!token.IsCancellationRequested)
+            {
+                //task completed
+                return frame; 
+            }
+            //cancellation token activated
+            return null; 
         }
-
         public int GetRndNumber(IcdItem icdItem)
         {
             return _rnd.Next(icdItem.MinValue, icdItem.MaxValue);
         }
-
     }
 }

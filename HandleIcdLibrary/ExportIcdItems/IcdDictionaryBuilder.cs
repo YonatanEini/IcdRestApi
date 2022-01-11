@@ -9,7 +9,7 @@ namespace HandleIcdLibrary
     public class IcdDictionaryBuilder
     {
         /// <summary>
-        /// builds Icd Items Dictionary
+        /// builds {id - IcdItem} Dictionary
         /// </summary>
         private readonly string _filePath;
         public IcdDictionaryBuilder(string path)
@@ -17,16 +17,18 @@ namespace HandleIcdLibrary
             this._filePath = path;
         }
         /// <summary>
-        /// builds IcdItems Dictionarty {key = id, value = IcdIem}
+        /// builds IcdItems Dictionarty from icd file {key = id, value = IcdIem}
         /// </summary>
-        /// <param name="token"></param>
+        /// <param name="token">producer cancellation token</param>
         /// <returns></returns>
-        public async Task<Dictionary<int, IcdItem>> InsertValuesAsync(CancellationToken token)
+        public async Task<Dictionary<int, IcdItem>> InsertValuesAsyncTask(CancellationToken token)
         {
             Dictionary<int, IcdItem> icdItemsDictionary = new Dictionary<int, IcdItem>();
             ExportIcdItem ItemsExported = ExportIcdItem.GetInstance();
+            //icd file lines
             string[] fileLines = await File.ReadAllLinesAsync(_filePath);
-            await Task.Run(() => //could be many lines in the ICD file
+            //could be many lines in the ICD file => Task
+            await Task.Run(() => 
             {
                 for (int i = 1; i < fileLines.Length - 1; i++)
                 {

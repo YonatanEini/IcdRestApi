@@ -2,12 +2,23 @@
 using HandleKafkaLibrary.TopicsEnum;
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
 
 namespace HandleKafkaLibrary.CosumersProperties
 {
-    class HttpClientProperties : ClientPropertiesBase
+    /// <summary>
+    /// http client properties
+    /// </summary>
+    public class HttpClientProperties : ClientPropertiesBase
     {
-        public HttpClientProperties() : base() {; }
-        public HttpClientProperties(int port, string ip, List<KafkaTopicsEnum> topic) : base(port, ip, topic) {; }
+        public string ApiName { get; set; }
+        public HttpClientProperties() : base() 
+        {
+            this.ApiName = " ";
+        }
+        public HttpClientProperties(int port, string ip, List<KafkaTopicsEnum> topic, string apiName) : base(port, ip, topic) 
+        {
+            this.ApiName = apiName;
+        }
     }
 }

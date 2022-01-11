@@ -9,11 +9,12 @@ using HandleKafkaLibrary.CosumersProperties;
 using HandleKafkaLibrary;
 using HandleKafkaLibrary.ClientConsumers;
 using System.Threading.Tasks;
-using System.Threading;
+using HandleKafkaLibrary.ClientDataReceivers;
+using System.Net;
+using HandleKafkaLibrary.ClientsProperties;
 
 namespace DecodedIcd.Controllers
 {
-
     [Route("api/[controller]")]
     public class DecodedIcdController : Controller
     {
@@ -22,7 +23,8 @@ namespace DecodedIcd.Controllers
         private readonly IcdDataInitialiazer _IcdInitilailizer;
         private readonly ProducerConfig _kafkaProducerconfig;
         private readonly ConsumerConfig _kafkaConsuemerConfig;
-        public DecodedIcdController(IOptions<IcdDataInitialiazer> filesPath, ProducerConfig producerConfig, ConsumerConfig consumerConfig)
+        public DecodedIcdController(IOptions<IcdDataInitialiazer> filesPath, ProducerConfig producerConfig, 
+            ConsumerConfig consumerConfig)
         {
             this._IcdInitilailizer = filesPath.Value;
             this.HandleClientRequests = HandleClientRequests.GetInstance();
@@ -39,12 +41,30 @@ namespace DecodedIcd.Controllers
         public IEnumerable<string> Get()
         {
             if (this.CommuncationIcdInitialize.CommunicationsIcdDict.Keys == null)
-                Response.StatusCode = 500; //database is empty
+                //database is empty
+                Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable; 
             return this.CommuncationIcdInitialize.CommunicationsIcdDict.Keys;
+        }
+        /// <summary>
+        /// returns the cancelled request list
+        /// </summary>
+        /// <returns></returns>
+        [HttpGet("CancelledRequests")]
+        // GET api/DecodedIcd/CancelledRequests
+        public IEnumerable<string> GetCancelledRequests()
+        {
+            KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
+            List<string> CloneDiscriptionList = new List<string>(consumerManager.CancelledRequestDiscriptionList);
+            if(CloneDiscriptionList.Count == 0)
+            {
+                Response.StatusCode = (int)HttpStatusCode.NoContent;
+            }
+            consumerManager.CancelledRequestDiscriptionList.Clear();
+            return CloneDiscriptionList;
         }
         // GET api/DecodedIcd/requests
         [HttpGet("requests")]
-        public List<DecodedMessagePropertiesDto> GetActiveRequest()
+        public IEnumerable<DecodedMessagePropertiesDto> GetActiveRequest()
         {
             return this.HandleClientRequests.ClientActiveRequest;
         }
@@ -57,14 +77,16 @@ namespace DecodedIcd.Controllers
         [HttpPost]
         public void ProducerRequestPost([FromBody] DecodedMessagePropertiesDto decodedMessageProps)
         {
-            if(ModelState.IsValid && this.HandleClientRequests.CheckClientMessageProperties(CommuncationIcdInitialize, decodedMessageProps))
+            if(ModelState.IsValid && 
+                this.HandleClientRequests.CheckClientMessageProperties(CommuncationIcdInitialize, decodedMessageProps))
             {
-                this.HandleClientRequests.ProduceDecodedMessageTask(decodedMessageProps, this.CommuncationIcdInitialize, _IcdInitilailizer, this._kafkaProducerconfig);
-                Response.StatusCode = 201;
+                Task.Factory.StartNew(() => this.HandleClientRequests.ProduceDecodedMessageAsync(decodedMessageProps, 
+                    this.CommuncationIcdInitialize, _IcdInitilailizer, this._kafkaProducerconfig));
+                Response.StatusCode = ((int)HttpStatusCode.Accepted);
             }
             else
             {
-                Response.StatusCode = 400;
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
             }
         }
         /// <summary>
@@ -78,12 +100,20 @@ namespace DecodedIcd.Controllers
             {
                 KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
                 MongodbClient mongodbConsumer = new MongodbClient(properties);
-                consumerManager.AddConsumer(mongodbConsumer, this._kafkaConsuemerConfig);
-                Response.StatusCode = 201;
+                //checking mongodb connection
+                if (mongodbConsumer.CheckMongoDBconnection()) 
+                {
+                    consumerManager.AddConsumer(mongodbConsumer, this._kafkaConsuemerConfig);
+                    Response.StatusCode = (int)HttpStatusCode.Created;
+                }
+                else
+                {
+                    Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+                }
             }
             else
             {
-                Response.StatusCode = 400;
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
             } 
         }
         /// <summary>
@@ -91,18 +121,136 @@ namespace DecodedIcd.Controllers
         /// </summary>
         /// <param name="properties"></param>
         [HttpPost("UdpClientRequest")]
-        public void Post([FromBody] UdpClientProperties properties)
+        public void Post([FromBody] SocketClientsProperties properties)
         {
             if (ModelState.IsValid)
             {
                 KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
-                UdpClient udpClient = new UdpClient(properties);
-                consumerManager.AddConsumer(udpClient, this._kafkaConsuemerConfig);
-                Response.StatusCode = 201;
+                UdpProtocolClient udpClient = new UdpProtocolClient(properties);
+                if(udpClient.CheckUdpConection())
+                {
+                    consumerManager.AddConsumer(udpClient, this._kafkaConsuemerConfig);
+                    Response.StatusCode = ((int)HttpStatusCode.Created);
+                }
+                else
+                {
+                    Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+                }
             }
             else
             {
-                Response.StatusCode = 400;
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+            }
+        }
+        [HttpPost("TcpClientRequest")]
+        public void TcpClientPostRequest([FromBody] SocketClientsProperties properties)
+        {
+            if (ModelState.IsValid)
+            {
+                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
+                TcpProtocolClient tcpClient = new TcpProtocolClient(properties);
+                if (tcpClient.ConnectToServer())
+                {
+                    consumerManager.AddConsumer(tcpClient, this._kafkaConsuemerConfig);
+                    Response.StatusCode = ((int)HttpStatusCode.Created);
+                }
+                else
+                {
+                    Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+                }
+            }
+            else
+            {
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+            }
+        }
+        [HttpPost("WebSocketClientRequest")]
+        public void WebSocketClientPostRequest([FromBody] SocketClientsProperties properties)
+        {
+            if (ModelState.IsValid)
+            {
+                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
+                WebSocketClient webClient = new WebSocketClient(properties);
+                if (webClient.ConnectToServer())
+                {
+                    consumerManager.AddConsumer(webClient, this._kafkaConsuemerConfig);
+                    Response.StatusCode = ((int)HttpStatusCode.Created);
+                }
+                else
+                {
+                    Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+                }
+            }
+            else
+            {
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+            }
+        }
+        [HttpPost("HttpClientRequest")]
+        public void Post([FromBody] HttpClientProperties properties)
+        {
+            if (ModelState.IsValid)
+            {
+                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
+                MultipartContentHttpClient httpClient = new MultipartContentHttpClient(properties);
+                if (httpClient.CheckHttpProperties())
+                {
+                    consumerManager.AddConsumer(httpClient, this._kafkaConsuemerConfig);
+                    Response.StatusCode = ((int)HttpStatusCode.Accepted);
+                }
+                else
+                {
+                    Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+                }
+            }
+            else
+            {
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+            }
+        }
+        [HttpPost("HttpProtocolClientRequest")]
+        public async Task HttpClientRequestPostAsync([FromBody] HttpClientProperties properties)
+        {
+            if (ModelState.IsValid)
+            {
+                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
+                HttpProtocolClient httpClient = new HttpProtocolClient(properties);
+                bool httpPropertiesValidation = await httpClient.CheckHttpPropertiesAsync();
+                if (httpPropertiesValidation == true)
+                {
+                    consumerManager.AddConsumer(httpClient, this._kafkaConsuemerConfig);
+                    Response.StatusCode = ((int)HttpStatusCode.Accepted);
+                }
+                else
+                {
+                    Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+                }
+            }
+            else
+            {
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+            }
+        }
+        
+        [HttpPost("SplunkClientRequest")]
+        public void SplunkClientRequestPost([FromBody] SplunkClientProperties properties)
+        {
+            if (ModelState.IsValid)
+            {
+                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
+                SplunkClient httpClient = new SplunkClient(properties);
+                consumerManager.AddConsumer(httpClient, this._kafkaConsuemerConfig);
+                Response.StatusCode = ((int)HttpStatusCode.Accepted);
+                /*
+                else
+                {
+                    Response.StatusCode = ((int)HttpStatusCode.BadRequest);
+                }
+                */
+            }
+            else
+            {
+                Response.StatusCode = ((int)HttpStatusCode.BadRequest);
             }
         }
         /// <summary>
@@ -115,75 +263,62 @@ namespace DecodedIcd.Controllers
         {
             if (CancelledRequests != null)
             {
-                Response.StatusCode = 201; //assuming succeed
+                //assuming succeed
+                Response.StatusCode = ((int)HttpStatusCode.Created); 
                 var cancelProducerTask = Parallel.ForEach(CancelledRequests, communicationName =>
                 {
                     KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
                     if (!this.HandleClientRequests.StopRequest(communicationName))
-                    { 
-                        Response.StatusCode = 400;
+                    {
+                        Response.StatusCode = ((int)HttpStatusCode.FailedDependency);
                     }
                 });
                 if(!cancelProducerTask.IsCompleted)
                 {
-                    Response.StatusCode = 400;
+                    Response.StatusCode = ((int)HttpStatusCode.RequestTimeout);
                 }
             }
             else
             {
-                Response.StatusCode = 400;
+                Response.StatusCode = ((int)HttpStatusCode.FailedDependency);
             }
         }
         // POST api/DecodedIcd/CancelMongoClient
         [HttpPost("CancelMongoClient")]
         public void CancelMongoClient([FromBody] MongodbClientProperties properties)
         {
-           Response.StatusCode = 400; //assuming cancel failed
            if(ModelState.IsValid)
            {
-                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
-                foreach (var topic in properties.ConsumerTopic)
-                {
-                    if (consumerManager.TopicClientsDict.ContainsKey(topic))
-                    {
-                        List<ClientDataReceiverBase> topicKafkaListeners = consumerManager.TopicClientsDict[topic];
-                        foreach (var client in topicKafkaListeners)
-                        {
-                            if (client.CompareProperties(properties))
-                            {
-                                consumerManager.TopicClientsDict[topic].Remove(client);
-                                Response.StatusCode = 201;
-                                break;
-                            }
-                        }
-                    }
-                }
+                Response.StatusCode =(int)this.HandleClientRequests.SearchClientProperties(properties);
+           }
+           else
+           {
+                Response.StatusCode = (int)HttpStatusCode.FailedDependency;
            }
         }
         // POST api/DecodedIcd/CancelUdpClient
         [HttpPost("CancelUdpClient")]
-        public void CancelUdpClient([FromBody] UdpClientProperties properties)
+        public void CancelUdpClient([FromBody] SocketClientsProperties properties)
         {
-            Response.StatusCode = 400; //assuming cancel failed
             if (ModelState.IsValid)
             {
-                KafkaConsumerManager consumerManager = KafkaConsumerManager.GetInstance();
-                foreach (var topic in properties.ConsumerTopic)
-                {
-                    if (consumerManager.TopicClientsDict.ContainsKey(topic))
-                    {
-                        List<ClientDataReceiverBase> topicKafkaListeners = consumerManager.TopicClientsDict[topic];
-                        foreach (var client in topicKafkaListeners)
-                        {
-                            if (client.CompareProperties(properties))
-                            {
-                                consumerManager.TopicClientsDict[topic].Remove(client);
-                                Response.StatusCode = 201;
-                                break;
-                            }
-                        }
-                    }
-                }
+                Response.StatusCode = (int)this.HandleClientRequests.SearchClientProperties(properties);
+            }
+            else
+            {
+                Response.StatusCode = (int)HttpStatusCode.FailedDependency;
+            }
+        }
+        [HttpPost("CancelHttpClient")]
+        public void CancelHttpClient([FromBody] HttpClientProperties properties)
+        {
+            if (ModelState.IsValid)
+            {
+                Response.StatusCode = (int)this.HandleClientRequests.SearchClientProperties(properties);
+            }
+            else
+            {
+                Response.StatusCode = (int)HttpStatusCode.FailedDependency;
             }
         }
         // DELETE api/DecodedIcd/{communcationName}
@@ -193,11 +328,11 @@ namespace DecodedIcd.Controllers
             if (this.CommuncationIcdInitialize.CommunicationsIcdDict.ContainsKey(communcationName))
             {
                 this.CommuncationIcdInitialize.CommunicationsIcdDict.Remove(communcationName);
-                Response.StatusCode = 204;
+                Response.StatusCode = (int)HttpStatusCode.NoContent;
             }
             else
             {
-                Response.StatusCode = 400;
+                Response.StatusCode = (int)HttpStatusCode.BadRequest;
             }
         }
       

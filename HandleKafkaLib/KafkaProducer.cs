@@ -16,7 +16,8 @@ namespace HandleKafkaLib
 {
     public class KafkaProducer
     {
-        private readonly ProducerConfig _config;
+        //appsettings config
+        private readonly ProducerConfig _config; 
         public KafkaProducer(ProducerConfig config)
         {
             this._config = config;
@@ -42,18 +43,28 @@ namespace HandleKafkaLib
             {
                 try
                 {
-                    token.ThrowIfCancellationRequested(); 
-                    string decodedFrameJson = JsonConvert.SerializeObject(frame); //convert decoded frame to JSON
-                    var deliveryReport = await producer.ProduceAsync(topic, new Message<Null, string> { Value = decodedFrameJson }); //produce to kafka
-                    if (deliveryReport.Status == PersistenceStatus.Persisted)
+                    if(!token.IsCancellationRequested && frame != null)
                     {
-                        Console.WriteLine($"KAFKA => Delivered '{deliveryReport.Value}' to '{deliveryReport.Topic}'"); //data send successfuly tp kafka
-                        producer.Flush(TimeSpan.FromSeconds(10));
+                        //convert decoded frame to JSON
+                        string decodedFrameJson = JsonConvert.SerializeObject(frame); 
+                        var deliveryReport = await producer.ProduceAsync(topic, new Message<Null, string> 
+                        { Value = decodedFrameJson }); //produce to kafka
+                        if (deliveryReport.Status == PersistenceStatus.Persisted) //produce successfully to kafka
+                        {
+                            //data send successfuly tp kafka
+                            Console.WriteLine($"KAFKA => Delivered '{deliveryReport.Value}' to '{deliveryReport.Topic}'");
+                            producer.Flush(TimeSpan.FromSeconds(10));
+                        }
                     }
                 }
-                catch (Exception e) //Cancellation token or kafka message Time-Out
+                //Cancellation token, kafka message Time-Out or kafka server is down
+                catch (ProduceException<Null, string> e) 
                 {
-                    Console.WriteLine($"ENABLE TO SEND DATA TO KAFKA ON TOPIC {topic}");
+                    Console.WriteLine($"UNABLE TO SEND DATA TO KAFKA ON TOPIC {topic}");
+                }
+                catch (ArgumentException e)
+                {
+                    Console.WriteLine("THE PRODUCER CONFIG IS NOT VALID");
                 }
             }
         }

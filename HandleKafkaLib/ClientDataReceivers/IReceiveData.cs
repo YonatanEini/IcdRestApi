@@ -7,7 +7,7 @@ namespace HandleKafkaLibrary.CosumersProperties
 {
     interface IReceiveData
     {
-        public Task ReceiveDecodedFrameAsync(DecodedFrameDto decodedFrame, CancellationToken token);
+        public Task<bool> ReceiveDecodedFrameAsync(DecodedFrameDto decodedFrame, CancellationToken token);
         public bool CompareProperties(ClientPropertiesBase properties);
     }
 }

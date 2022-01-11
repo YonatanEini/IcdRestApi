@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace HandleKafkaLib.CosumersProperties
 {
     /// <summary>
-    /// Client MongoDB properties 
+    /// MongoDB Client properties 
     /// </summary>
     public class MongodbClientProperties:ClientPropertiesBase
     {
@@ -24,7 +24,8 @@ namespace HandleKafkaLib.CosumersProperties
             this.DataBaseName = "";
             this.CollectionName = "";
         }
-        public MongodbClientProperties(string ip, int port, string DBName, string collectionName, List<KafkaTopicsEnum> topic) :base(port, ip, topic)
+        public MongodbClientProperties(string ip, int port, string DBName, string collectionName, 
+            List<KafkaTopicsEnum> topic) :base(port, ip, topic)
         {
             this.DataBaseName = DBName;
             this.CollectionName = collectionName;

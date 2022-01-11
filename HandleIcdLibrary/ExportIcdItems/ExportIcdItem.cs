@@ -18,7 +18,7 @@ namespace HandleIcdLibrary
             return _instance;
         }
         /// <summary>
-        ///   export icd item from line
+        ///   export icd item from a Icd file line
         /// </summary>
         /// <param name="line"></param>
         /// <returns> icd item </returns>
@@ -47,7 +47,6 @@ namespace HandleIcdLibrary
         private int ExportStartBit(string startBit, int endBit)
         {
             if (string.IsNullOrEmpty(startBit)) return 0;
-
             if (endBit == 1)
             {
                 return int.Parse(startBit);

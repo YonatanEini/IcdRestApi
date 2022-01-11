@@ -4,6 +4,9 @@ using System.Collections.Generic;
 
 namespace IcdFilesRestApi
 {
+    /// <summary>
+    /// reads data from appsettings
+    /// </summary>
     public class IcdDataInitialiazer
     {
         public string IcdFilesPath { get; set; }

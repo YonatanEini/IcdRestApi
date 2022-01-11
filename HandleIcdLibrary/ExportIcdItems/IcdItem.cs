@@ -3,6 +3,9 @@ using System.Collections.Generic;
 
 namespace HandleIcdLibrary
 {
+    /// <summary>
+    /// single ICD item
+    /// </summary>
     public class IcdItem
     {
         public int Location { get; set; }
@@ -25,6 +28,5 @@ namespace HandleIcdLibrary
             this.MinValue = minValue;
             this.MaxValue = maxValue;
         }
-
     }
 }

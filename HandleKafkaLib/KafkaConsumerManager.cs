@@ -7,14 +7,18 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace HandleKafkaLibrary
 {
     public class KafkaConsumerManager
     {
-        public Dictionary<KafkaTopicsEnum, List<ClientDataReceiverBase>> TopicClientsDict { get; set; } 
+        // {LandingBox: udpClient, MongoClient, HttpClient}
+        public Dictionary<KafkaTopicsEnum, List<ClientDataReceiverBase>> TopicClientsDict { get; set; }
+        // {FlightBoxUp: Token}
         public Dictionary<KafkaTopicsEnum, CancellationTokenSource> TopicCancellationTokenDict { get; set; }
-        public List<KafkaTopicsEnum> ConsumersOnPending { get; set; }
+        //run-time cancelled requests
+        public List<string> CancelledRequestDiscriptionList { get; set; }
         /// <summary>
         /// singleton
         /// </summary>
@@ -22,6 +26,7 @@ namespace HandleKafkaLibrary
         {
             this.TopicClientsDict = new Dictionary<KafkaTopicsEnum, List<ClientDataReceiverBase>>();
             this.TopicCancellationTokenDict = new Dictionary<KafkaTopicsEnum, CancellationTokenSource>();
+            this.CancelledRequestDiscriptionList = new List<string>();
         }
         private static KafkaConsumerManager _instance = null;
         public static KafkaConsumerManager GetInstance()
@@ -31,48 +36,43 @@ namespace HandleKafkaLibrary
         }
         public void AddConsumer(ClientDataReceiverBase clientProperties, ConsumerConfig config)
         {
-            foreach (var topic in clientProperties.ConsumerProperties.ConsumerTopic)
+            foreach (var topic in clientProperties.ClientProperties.ConsumerTopic)
             {
-                if (this.TopicClientsDict.ContainsKey(topic)) //checks if there is a consumer on the topic already
+                // checks if there is a topic consumer
+                if (this.TopicClientsDict.ContainsKey(topic)) 
                 {
-                    // adding to topic consumer list
+                    // adding the client to topic consumer list
                     this.TopicClientsDict[topic].Add(clientProperties);
                 }
                 else
                 {
-                    // creating new topic listener
+                    // creating new topic consumer
                     List<ClientDataReceiverBase> clients = new List<ClientDataReceiverBase>() { clientProperties };
-                    this.TopicClientsDict.Add(topic, new List<ClientDataReceiverBase>(clients));
-                    if(!this.TopicCancellationTokenDict.ContainsKey(topic))
+                    this.TopicClientsDict.Add(topic, clients);
+                    if (!this.TopicCancellationTokenDict.ContainsKey(topic))  
                     {
-                        this.TopicCancellationTokenDict.Add(topic, new CancellationTokenSource()); //to stay with the producer cancellation token
+                        //to stay with the producer cancellation token
+                        this.TopicCancellationTokenDict.Add(topic, new CancellationTokenSource()); 
                     }
-                    KafkaConsumerCreator consumer = new KafkaConsumerCreator(config);//creating kafka consumer Task
-                    consumer.ConsumeFromKafkaTopicAsync(topic);
+                    //starting kafka consumer Task
+                    KafkaConsumerCreator consumer = new KafkaConsumerCreator(config);
+                    Task.Factory.StartNew(() => consumer.ConsumeFromKafkaTopicAsync(topic));
                 }
             }
         }
-        public void CancelKafkaConsumer(string topic)
-        {
-            KafkaTopicsEnum enumTopic;
-            KafkaTopicsEnum.TryParse(topic, out enumTopic);
-            if(this.TopicCancellationTokenDict.ContainsKey(enumTopic))
-            {
-                this.TopicCancellationTokenDict[enumTopic].Cancel();
-                this.TopicCancellationTokenDict.Remove(enumTopic);
-            }
-        }
-        public void AddCancellationToken(string topic, CancellationTokenSource token)
+        public void AddTopicCancellationToken(string topic, CancellationTokenSource token)
         {
             KafkaTopicsEnum kafkaEnumTopic;
             KafkaTopicsEnum.TryParse(topic, out kafkaEnumTopic);
             if(this.TopicCancellationTokenDict.ContainsKey(kafkaEnumTopic))
             {
-                this.TopicCancellationTokenDict[kafkaEnumTopic] = token; //update to producer cancellationToken
+                //update to producer cancellationToken (consumer opened before the producer)
+                this.TopicCancellationTokenDict[kafkaEnumTopic] = token; 
             }
             else
             {
-                this.TopicCancellationTokenDict.Add(kafkaEnumTopic, token);
+                //create new CancellationToken (producer before the consumer)
+                this.TopicCancellationTokenDict.Add(kafkaEnumTopic, token); 
             }
         }
         
